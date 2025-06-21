@@ -20,6 +20,9 @@ impl CounterFuture {
 impl Future for CounterFuture {
     type Output = u32;
     
+    /// poll function is not async. 
+    /// - because an async poll function would return a circular dependency, as you would be
+    /// - sending a future to be polled in order to resolve a future being polled.
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.count += 1;
         println!("polling with result: {}", self.count);
