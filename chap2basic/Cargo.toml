@@ -8,8 +8,8 @@ name = "basic_counter"
 path = "src/bin/basic_counter.rs"
 
 [[bin]]
-name = "advanced_counter"
-path = "src/bin/advanced_counter.rs"
+name = "counter_no_waker"
+path = "src/bin/counter_no_waker.rs"
 
 [[bin]]
 name = "parallel_counter"
