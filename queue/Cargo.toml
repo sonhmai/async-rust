@@ -1,0 +1,18 @@
+[package]
+name = "queue"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+async-task = "4.7.1"
+futures-lite = "1.12.0"
+# A multiproducer, multi-consumer channel that we’ll use to implement our async
+#queue, allowing tasks to be safely passed around within the runtime. We could
+#use async-channel here but are opting for flume because we want to be able
+#to clone receivers, as we are going to be distributing tasks among consumers.
+#Additionally, flume provides unbounded channels that can hold an unlimited
+#number of messages and implements lock-free algorithms. This makes flume
+#particularly beneficial for highly concurrent programs, where the queue might
+#need to handle a large number of messages in parallel, unlike the standard library
+#channels that rely on a blocking mutex for synchronization.
+flume = "0.11.1"

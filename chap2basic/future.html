@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust Async/Future Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .diagram-box {
+            border: 2px solid;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            text-align: center;
+            transition: all 0.5s ease-in-out;
+        }
+        .arrow {
+            transition: all 0.5s ease-in-out;
+            stroke-width: 2.5;
+        }
+        .waker {
+            transition: all 0.5s ease-in-out;
+        }
+        .step-text {
+            transition: opacity 0.5s ease-in-out;
+        }
+        .highlight-box {
+            box-shadow: 0 0 15px 3px rgba(59, 130, 246, 0.6);
+            transform: scale(1.05);
+        }
+        .highlight-arrow {
+            stroke: #3B82F6; /* blue-500 */
+        }
+        .highlight-text {
+            color: #3B82F6;
+            font-weight: 600;
+        }
+        .waker-path {
+            transition: d 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4 sm:p-6 md:p-8">
+
+<div class="w-full max-w-5xl bg-gray-800 rounded-xl shadow-2xl p-6 md:p-8">
+    <h1 class="text-2xl md:text-3xl font-bold text-center text-cyan-400 mb-2">Visualizing Rust's `Future` and `Waker`</h1>
+    <p class="text-center text-gray-400 mb-6">An interactive diagram of the async execution model.</p>
+
+    <!-- Diagram SVG -->
+    <div class="aspect-[2/1] w-full">
+        <svg id="async-diagram" viewBox="0 0 800 400" class="w-full h-full">
+            <!-- Definitions for markers -->
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" class="fill-current text-gray-500" />
+                </marker>
+                <marker id="arrowhead-highlight" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" class="fill-current text-blue-500" />
+                </marker>
+            </defs>
+
+            <!-- Components -->
+            <g id="executor-group">
+                <rect x="50" y="50" width="180" height="300" rx="10" class="fill-gray-700/50 stroke-gray-600 diagram-box" />
+                <text x="140" y="80" text-anchor="middle" class="fill-gray-300 font-semibold text-lg">Executor</text>
+                <text x="140" y="105" text-anchor="middle" class="fill-gray-400 text-sm">(e.g., Tokio, async-std)</text>
+                <!-- Waker Queue -->
+                <rect x="70" y="200" width="140" height="130" rx="5" class="fill-gray-800/60 stroke-gray-500 stroke-dashed" />
+                <text x="140" y="220" text-anchor="middle" class="fill-gray-400 font-semibold">Waker Queue</text>
+            </g>
+
+            <g id="future-group">
+                <rect x="310" y="150" width="180" height="100" rx="10" class="fill-gray-700/50 stroke-gray-600 diagram-box" />
+                <text x="400" y="180" text-anchor="middle" class="fill-gray-300 font-semibold text-lg">Future</text>
+                <text id="future-status" x="400" y="205" text-anchor="middle" class="fill-yellow-400 font-bold text-sm transition-all duration-500">State: Pending</text>
+            </g>
+
+            <g id="operation-group">
+                <rect x="570" y="150" width="180" height="100" rx="10" class="fill-gray-700/50 stroke-gray-600 diagram-box" />
+                <text x="660" y="180" text-anchor="middle" class="fill-gray-300 font-semibold text-lg">Async Operation</text>
+                <text x="660" y="205" text-anchor="middle" class="fill-gray-400 text-sm">(e.g., Network, I/O)</text>
+            </g>
+
+            <!-- Waker Element -->
+            <g id="waker" class="waker opacity-0">
+                <rect x="390" y="260" width="20" height="20" rx="5" class="fill-cyan-400" />
+                <text x="420" y="275" class="fill-cyan-300 font-medium">Waker</text>
+            </g>
+
+            <!-- Arrows -->
+            <path id="poll-arrow" d="M235,180 C270,180 290,180 305,180" class="arrow stroke-gray-500 fill-none" marker-end="url(#arrowhead)"/>
+            <text x="270" y="170" class="fill-gray-400 text-sm">poll()</text>
+
+            <path id="register-arrow" d="M495,200 C525,200 550,200 565,200" class="arrow stroke-gray-500 fill-none opacity-0" marker-end="url(#arrowhead)"/>
+            <text id="register-text" x="500" y="190" class="fill-gray-400 text-sm opacity-0">registers interest</text>
+
+            <path id="waker-path" d="M400,280 C400,320 300,320 200,320" class="arrow stroke-cyan-500 fill-none opacity-0 stroke-dashed" marker-end="url(#arrowhead)"/>
+
+            <path id="notify-arrow" d="M570,170 C530,130 250,130 235,160" class="arrow stroke-gray-500 fill-none opacity-0" marker-end="url(#arrowhead)"/>
+            <text id="notify-text" x="400" y="120" class="fill-gray-400 text-sm opacity-0">operation complete</g>
+
+                <path id="wake-arrow" d="M140,195 C140,150 290,160 305,170" class="arrow stroke-gray-500 fill-none opacity-0" marker-end="url(#arrowhead)"/>
+                <text id="wake-text" x="220" y="145" class="fill-gray-400 text-sm opacity-0">wake_by_ref()</text>
+
+                <path id="repoll-arrow" d="M235,220 C270,220 290,220 305,220" class="arrow stroke-gray-500 fill-none opacity-0" marker-end="url(#arrowhead)"/>
+                <text id="repoll-text" x="270" y="235" class="fill-gray-400 text-sm opacity-0">poll() again</text>
+        </svg>
+    </div>
+
+    <!-- Step-by-step Explanation -->
+    <div class="mt-6 p-5 bg-gray-700/40 rounded-lg min-h-[140px] md:min-h-[110px] flex items-center justify-center">
+        <p id="explanation-text" class="text-center text-lg text-gray-300 leading-relaxed step-text"></p>
+    </div>
+
+    <!-- Controls -->
+    <div class="flex justify-center items-center mt-6 space-x-4">
+        <button id="reset-btn" class="px-5 py-3 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-lg shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Reset</button>
+        <button id="next-btn" class="px-8 py-3 bg-cyan-500 hover:bg-cyan-400 text-gray-900 font-semibold rounded-lg shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-300">Start</button>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // DOM Elements
+        const nextBtn = document.getElementById('next-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const explanationText = document.getElementById('explanation-text');
+        const diagram = {
+            executor: document.getElementById('executor-group').querySelector('rect'),
+            future: document.getElementById('future-group').querySelector('rect'),
+            operation: document.getElementById('operation-group').querySelector('rect'),
+            futureStatus: document.getElementById('future-status'),
+            waker: document.getElementById('waker'),
+            wakerPath: document.getElementById('waker-path'),
+            arrows: {
+                poll: document.getElementById('poll-arrow'),
+                pollText: document.querySelector('text[x="270"]'),
+                register: document.getElementById('register-arrow'),
+                registerText: document.getElementById('register-text'),
+                notify: document.getElementById('notify-arrow'),
+                notifyText: document.getElementById('notify-text'),
+                wake: document.getElementById('wake-arrow'),
+                wakeText: document.getElementById('wake-text'),
+                repoll: document.getElementById('repoll-arrow'),
+                repollText: document.getElementById('repoll-text'),
+            }
+        };
+
+        let currentStep = -1;
+
+        const steps = [
+            { // Step 1
+                explanation: "1. The executor calls poll() on the future. The operation isn't complete, so the future returns Poll::Pending.",
+                action: () => {
+                    diagram.executor.classList.add('highlight-box');
+                    diagram.future.classList.add('highlight-box');
+                    diagram.arrows.poll.classList.add('highlight-arrow');
+                    diagram.arrows.poll.setAttribute('marker-end', 'url(#arrowhead-highlight)');
+                    diagram.arrows.pollText.classList.add('highlight-text');
+                }
+            },
+            { // Step 2
+                explanation: "2. The future registers its interest by giving the async operation a Waker.",
+                action: () => {
+                    diagram.future.classList.add('highlight-box');
+                    diagram.operation.classList.add('highlight-box');
+                    diagram.waker.classList.remove('opacity-0');
+                    diagram.waker.style.transform = 'translate(0px, 0px)';
+                    diagram.arrows.register.classList.add('highlight-arrow', 'opacity-100');
+                    diagram.arrows.register.setAttribute('marker-end', 'url(#arrowhead-highlight)');
+                    diagram.arrows.registerText.classList.add('highlight-text', 'opacity-100');
+                }
+            },
+            { // Step 3
+                explanation: "3. The executor stores the Waker in a queue, waiting for the operation to complete.",
+                action: () => {
+                    diagram.executor.classList.add('highlight-box');
+                    diagram.waker.style.transform = 'translate(-270px, -30px)';
+                    diagram.wakerPath.classList.add('opacity-100');
+                }
+            },
+            { // Step 4
+                explanation: "4. The async operation completes and notifies the executor. The executor retrieves the Waker.",
+                action: () => {
+                    diagram.operation.classList.add('highlight-box');
+                    diagram.executor.classList.add('highlight-box');
+                    diagram.arrows.notify.classList.add('highlight-arrow', 'opacity-100');
+                    diagram.arrows.notify.setAttribute('marker-end', 'url(#arrowhead-highlight)');
+                    diagram.arrows.notifyText.classList.add('highlight-text', 'opacity-100');
+                    diagram.waker.style.transform = 'translate(-250px, -110px)';
+                }
+            },
+            { // Step 5
+                explanation: "5. The executor calls wake_by_ref() on the Waker, which signals that the associated task should run again.",
+                action: () => {
+                    diagram.executor.classList.add('highlight-box');
+                    diagram.future.classList.add('highlight-box');
+                    diagram.arrows.wake.classList.add('highlight-arrow', 'opacity-100');
+                    diagram.arrows.wake.setAttribute('marker-end', 'url(#arrowhead-highlight)');
+                    diagram.arrows.wakeText.classList.add('highlight-text', 'opacity-100');
+                    diagram.waker.classList.add('opacity-0');
+                }
+            },
+            { // Step 6
+                explanation: "6. The executor polls the future again. This time the operation is complete, so it returns Poll::Ready(value).",
+                action: () => {
+                    diagram.executor.classList.add('highlight-box');
+                    diagram.future.classList.add('highlight-box');
+                    diagram.arrows.repoll.classList.add('highlight-arrow', 'opacity-100');
+                    diagram.arrows.repoll.setAttribute('marker-end', 'url(#arrowhead-highlight)');
+                    diagram.arrows.repollText.classList.add('highlight-text', 'opacity-100');
+                    diagram.futureStatus.textContent = "State: Ready(value)";
+                    diagram.futureStatus.classList.remove('text-yellow-400');
+                    diagram.futureStatus.classList.add('text-green-400');
+                    nextBtn.textContent = 'Done!';
+                    nextBtn.disabled = true;
+                    nextBtn.classList.add('bg-gray-500', 'cursor-not-allowed');
+                    nextBtn.classList.remove('bg-cyan-500', 'hover:bg-cyan-400');
+                }
+            }
+        ];
+
+        function resetAllHighlights() {
+            // Reset boxes
+            diagram.executor.classList.remove('highlight-box');
+            diagram.future.classList.remove('highlight-box');
+            diagram.operation.classList.remove('highlight-box');
+
+            // Reset arrows and text
+            Object.values(diagram.arrows).forEach(el => {
+                if (el.tagName === 'path') {
+                    el.classList.remove('highlight-arrow', 'opacity-100');
+                    el.setAttribute('marker-end', 'url(#arrowhead)');
+                } else if (el.tagName === 'text') {
+                    el.classList.remove('highlight-text', 'opacity-100');
+                }
+            });
+            diagram.arrows.poll.classList.remove('opacity-0');
+            diagram.arrows.pollText.classList.remove('opacity-0');
+
+            // Reset specific elements
+            diagram.waker.classList.add('opacity-0');
+            diagram.waker.style.transform = 'translate(0, 0)';
+            diagram.wakerPath.classList.remove('opacity-100');
+
+            diagram.futureStatus.textContent = "State: Pending";
+            diagram.futureStatus.classList.add('text-yellow-400');
+            diagram.futureStatus.classList.remove('text-green-400');
+        }
+
+        function runStep(stepIndex) {
+            if (stepIndex < 0 || stepIndex >= steps.length) return;
+
+            resetAllHighlights();
+
+            const step = steps[stepIndex];
+            explanationText.style.opacity = 0;
+
+            setTimeout(() => {
+                explanationText.innerHTML = step.explanation;
+                step.action();
+                explanationText.style.opacity = 1;
+            }, 300);
+        }
+
+        function handleNext() {
+            if (currentStep === -1) {
+                nextBtn.textContent = 'Next Step';
+            }
+            currentStep++;
+            if (currentStep < steps.length) {
+                runStep(currentStep);
+            }
+        }
+
+        function handleReset() {
+            currentStep = -1;
+            resetAllHighlights();
+            explanationText.textContent = "Click 'Start' to begin the visualization.";
+            nextBtn.textContent = 'Start';
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('bg-gray-500', 'cursor-not-allowed');
+            nextBtn.classList.add('bg-cyan-500', 'hover:bg-cyan-400');
+
+        }
+
+        nextBtn.addEventListener('click', handleNext);
+        resetBtn.addEventListener('click', handleReset);
+
+        // Initial state
+        handleReset();
+    });
+</script>
+</body>
+</html>

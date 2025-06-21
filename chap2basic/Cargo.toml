@@ -1,0 +1,19 @@
+[package]
+name = "chap2basic"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "basic_counter"
+path = "src/bin/basic_counter.rs"
+
+[[bin]]
+name = "counter_no_waker"
+path = "src/bin/counter_no_waker.rs"
+
+[[bin]]
+name = "parallel_counter"
+path = "src/bin/parallel_counter.rs"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
