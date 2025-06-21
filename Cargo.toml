@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "queue",
-    "utils", 
+    "chap2basic",
 ]
 
 [workspace.package]
