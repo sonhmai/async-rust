@@ -1,3 +1,27 @@
+/**
+Futures need the Waker::wake() function so it can be called when the
+future should be polled again. The process takes the following steps:
+
+1. The poll function for a future is called, and the result is that the future needs to
+wait for an async operation to complete before the future is able to return a value.
+
+2. The future registers its interest in being notified of the operation’s completion by
+calling a method that references the waker.
+
+3. The executor takes note of the interest in the future’s operation and stores the
+waker in a queue.
+
+4. At some later time, the operation completes, and the executor is notified. The
+executor retrieves the wakers from the queue and calls wake_by_ref on each one,
+waking up the futures.
+
+5. The wake_by_ref function signals the associated task that should be scheduled
+for execution. The way this is done can vary depending on the runtime.
+
+6. When the future is executed, the executor will call the poll method of the
+future again, and the future will determine whether the operation has completed,
+returning a value if completion is achieved.
+**/
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
