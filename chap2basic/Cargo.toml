@@ -16,4 +16,4 @@ name = "parallel_counter"
 path = "src/bin/parallel_counter.rs"
 
 [dependencies]
-tokio.workspace = true
+tokio = { version = "1.0", features = ["full"] }
